@@ -4,7 +4,8 @@ import { BrowserPlatformLocation } from '@angular/platform-browser/src/browser/l
 import { AuthService } from '../auth/auth.service';
 import { BehaviorSubject } from 'rxjs';
 
-import { take, map } from 'rxjs/operators';
+import { take, map, tap, delay, switchMap } from 'rxjs/operators';
+import { HttpClient } from '@angular/common/http';
 
 @Injectable({
   providedIn: 'root'
@@ -31,7 +32,7 @@ export class PlacesService {
     )
   ]);
 
-  constructor(private authService: AuthService) { }
+  constructor(private authService: AuthService, private http: HttpClient) { }
 
   get places() {
     return this._places.asObservable();
@@ -45,6 +46,7 @@ export class PlacesService {
   }
 
   addPlace(title: string, description: string, price: number, dateFrom: Date, dateTo: Date) {
+    let generatedId: string;
     const newPlace = new Place(
       Math.random().toString(),
       title,
@@ -55,8 +57,39 @@ export class PlacesService {
       dateTo,
       this.authService.user_id);
 
-    this.places.pipe(take(1)).subscribe(places => {
-      this._places.next(places.concat(newPlace));
-    });
+    return this.http.post<{ name: string }>('https://ionic-angular-project-80500.firebaseio.com/offered-places.json', {
+      ...newPlace, id: null
+    })
+      .pipe(
+        switchMap(resData => {
+          generatedId = resData.name;
+          return this.places;
+        }),
+        take(1),
+        tap(places => {
+          newPlace.id = generatedId;
+          this._places.next(places.concat(newPlace));
+        })
+      );
+    /*
+        return this.places.pipe(take(1), delay(1000), tap(places => {
+          this._places.next(places.concat(newPlace));
+        }));
+    */
+  }
+
+  onEditOffer(placeId: string, title: string, description: string) {
+    return this.places.pipe(take(1), delay(1000), tap(places => {
+      const updatedPlaceIndex = places.findIndex(pl => pl.id === placeId);
+      const updatedPlaces = [...places];
+      const oldPlace = updatedPlaces[updatedPlaceIndex];
+      updatedPlaces[updatedPlaceIndex] = new Place(
+        oldPlace.id,
+        title,
+        description,
+        oldPlace.imageUrl,
+        oldPlace.price, oldPlace.availableFrom, oldPlace.availableTo, oldPlace.userId);
+      this._places.next(updatedPlaces);
+    }));
   }
 }
