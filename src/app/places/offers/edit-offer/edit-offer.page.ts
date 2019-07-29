@@ -1,5 +1,5 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
-import { NavController, LoadingController } from '@ionic/angular';
+import { NavController, LoadingController, AlertController } from '@ionic/angular';
 import { ActivatedRoute, Router } from '@angular/router';
 import { PlacesService } from '../../places.service';
 import { Place } from '../../place.model';
@@ -14,6 +14,11 @@ import { Subscription } from 'rxjs';
 export class EditOfferPage implements OnInit, OnDestroy {
 
   place: Place;
+
+  placeId: string;
+
+  isLoading = false;
+
   form: FormGroup;
 
   private placeSub: Subscription;
@@ -22,7 +27,8 @@ export class EditOfferPage implements OnInit, OnDestroy {
     private nav: NavController,
     private route: ActivatedRoute,
     private placeService: PlacesService, private router: Router,
-    private loadingCtrl: LoadingController) { }
+    private loadingCtrl: LoadingController,
+    private alertCtrl: AlertController) { }
 
   ngOnInit() {
     this.route.paramMap.subscribe(paramMap => {
@@ -30,7 +36,8 @@ export class EditOfferPage implements OnInit, OnDestroy {
         this.nav.navigateBack('/places/tabs/offers');
         return;
       }
-
+      this.placeId = paramMap.get('placeId');
+      this.isLoading = true;
       this.placeSub = this.placeService.getPlace(paramMap.get('placeId')).subscribe(place => {
         this.place = place;
         this.form = new FormGroup({
@@ -43,6 +50,21 @@ export class EditOfferPage implements OnInit, OnDestroy {
             validators: [Validators.required, Validators.maxLength(200)]
           })
         });
+        this.isLoading = false;
+      }, error => {
+        this.alertCtrl.create({
+          header: 'An error occurred!',
+          message: 'Place could not be loaded. Please try again later...',
+          buttons: [{
+            text: 'Okay',
+            handler: () => {
+              this.router.navigate(['/places/tabs/offers']);
+            }
+          }]
+        })
+          .then(alertEl => {
+            alertEl.present();
+          });
       });
     });
   }
