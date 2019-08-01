@@ -6,6 +6,7 @@ import { BehaviorSubject, of } from 'rxjs';
 
 import { take, map, tap, delay, switchMap } from 'rxjs/operators';
 import { HttpClient } from '@angular/common/http';
+import { PlaceLocation } from './location.model';
 
 /*
 new Place('p1', 'Manhattan Mansion', 'In New York City centre.',
@@ -35,6 +36,7 @@ interface PlaceData {
   price: number;
   title: string;
   userId: string;
+  location: PlaceLocation;
 }
 
 @Injectable({
@@ -57,7 +59,7 @@ export class PlacesService {
           id,
           placeData.title, placeData.description, placeData.imageUrl, placeData.price,
           new Date(placeData.availableFrom),
-          new Date(placeData.availableTo), placeData.userId);
+          new Date(placeData.availableTo), placeData.userId, placeData.location);
       }));
 
   }
@@ -75,7 +77,8 @@ export class PlacesService {
               resData[key].description, resData[key].imageUrl, resData[key].price,
               new Date(resData[key].availableFrom),
               new Date(resData[key].availableTo),
-              resData[key].userId));
+              resData[key].userId,
+              resData[key].location));
           }
         }
         return places;
@@ -87,37 +90,56 @@ export class PlacesService {
       );
   }
 
-  addPlace(title: string, description: string, price: number, dateFrom: Date, dateTo: Date) {
-    let generatedId: string;
-    const newPlace = new Place(
-      Math.random().toString(),
-      title,
-      description,
-      'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/Paris_Night.jpg/1024px-Paris_Night.jpg',
-      price,
-      dateFrom,
-      dateTo,
-      this.authService.user_id);
+  uploadImage(image: File) {
+    const uploadData = new FormData();
+    uploadData.append('image', image);
 
-    return this.http.post<{ name: string }>('https://ionic-angular-project-80500.firebaseio.com/offered-places.json', {
-      ...newPlace, id: null
-    })
-      .pipe(
-        switchMap(resData => {
-          generatedId = resData.name;
-          return this.places;
-        }),
-        take(1),
-        tap(places => {
-          newPlace.id = generatedId;
-          this._places.next(places.concat(newPlace));
-        })
-      );
-    /*
-        return this.places.pipe(take(1), delay(1000), tap(places => {
-          this._places.next(places.concat(newPlace));
-        }));
-    */
+    return this.http.post<{ imageUrl: string, imagePath: string }>(
+      'https://us-central1-ionic-angular-project-80500.cloudfunctions.net/storeImage', uploadData);
+  }
+
+  addPlace(
+    title: string,
+    description: string,
+    price: number,
+    dateFrom: Date, dateTo: Date,
+    location: PlaceLocation,
+    imageUrl: string) {
+    let generatedId: string;
+    let newPlace: Place;
+    return this.authService.user_id.pipe(
+      take(1),
+      switchMap(userId => {
+        if (!userId) {
+          throw new Error('No user id found...');
+        }
+
+        newPlace = new Place(
+          Math.random().toString(),
+          title,
+          description,
+          imageUrl,
+          price,
+          dateFrom,
+          dateTo,
+          userId,
+          location);
+
+        return this.http
+          .post<{ name: string }>('https://ionic-angular-project-80500.firebaseio.com/offered-places.json', {
+            ...newPlace, id: null
+          });
+      }),
+      switchMap(resData => {
+        generatedId = resData.name;
+        return this.places;
+      }),
+      take(1),
+      tap(places => {
+        newPlace.id = generatedId;
+        this._places.next(places.concat(newPlace));
+      })
+    );
   }
 
   onEditOffer(placeId: string, title: string, description: string) {
@@ -140,7 +162,8 @@ export class PlacesService {
           title,
           description,
           oldPlace.imageUrl,
-          oldPlace.price, oldPlace.availableFrom, oldPlace.availableTo, oldPlace.userId);
+          oldPlace.price, oldPlace.availableFrom, oldPlace.availableTo, oldPlace.userId,
+          oldPlace.location);
 
         return this.http
           .put(`https://ionic-angular-project-80500.firebaseio.com/offered-places/${placeId}.json`,

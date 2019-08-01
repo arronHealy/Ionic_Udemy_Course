@@ -5,7 +5,7 @@ import { MenuController } from '@ionic/angular';
 import { SegmentChangeEventDetail } from '@ionic/core';
 import { Subscription } from 'rxjs';
 import { AuthService } from '../../auth/auth.service';
-import { take } from 'rxjs/operators';
+import { take, switchMap } from 'rxjs/operators';
 
 @Component({
   selector: 'app-discover',
@@ -33,13 +33,18 @@ export class DiscoverPage implements OnInit, OnDestroy {
   ngOnInit() {
     this.placesSub = this.placesService.places.subscribe(places => {
       this.loadedPlaces = places;
-      if (this.chosenFilter === 'all') {
-        this.relevantPlaces = this.loadedPlaces;
-        this.listedLoadedPlaces = this.relevantPlaces.slice(1);
-      } else {
-        this.relevantPlaces = this.loadedPlaces.filter(place => place.userId !== this.authService.user_id);
-      }
-      this.listedLoadedPlaces = this.relevantPlaces.slice(1);
+      this.authService.user_id.pipe(
+        take(1))
+        .subscribe(userId => {
+          if (this.chosenFilter === 'all') {
+            this.relevantPlaces = this.loadedPlaces;
+            this.listedLoadedPlaces = this.relevantPlaces.slice(1);
+          } else {
+            this.relevantPlaces = this.loadedPlaces.filter(place => place.userId !== userId);
+          }
+          this.listedLoadedPlaces = this.relevantPlaces.slice(1);
+        });
+
     });
   }
 
@@ -57,16 +62,19 @@ export class DiscoverPage implements OnInit, OnDestroy {
   }
 
   onFilterUpdate(event: CustomEvent<SegmentChangeEventDetail>) {
-    console.log(event.detail);
-    if (event.detail.value === 'all') {
-      this.chosenFilter = 'all';
-      this.relevantPlaces = this.loadedPlaces;
-      this.listedLoadedPlaces = this.relevantPlaces.slice(1);
-    } else {
-      this.chosenFilter = 'bookable';
-      this.relevantPlaces = this.loadedPlaces.filter(place => place.userId !== this.authService.user_id);
-      this.listedLoadedPlaces = this.relevantPlaces.slice(1);
-    }
+    // console.log(event.detail);
+    this.authService.user_id.pipe(take(1)).subscribe(userId => {
+      if (event.detail.value === 'all') {
+        this.chosenFilter = 'all';
+        this.relevantPlaces = this.loadedPlaces;
+        this.listedLoadedPlaces = this.relevantPlaces.slice(1);
+      } else {
+        this.chosenFilter = 'bookable';
+        this.relevantPlaces = this.loadedPlaces.filter(place => place.userId !== userId);
+        this.listedLoadedPlaces = this.relevantPlaces.slice(1);
+      }
+    });
+
   }
 
   /*

@@ -13,6 +13,8 @@ import { CreateBookingComponent } from '../../../bookings/create-booking/create-
 import { Subscription } from 'rxjs';
 import { BookingService } from '../../../bookings/booking.service';
 import { AuthService } from '../../../auth/auth.service';
+import { MapModalComponent } from '../../../shared/map-modal/map-modal.component';
+import { switchMap, take } from 'rxjs/operators';
 
 @Component({
   selector: 'app-place-detail',
@@ -46,25 +48,36 @@ export class PlaceDetailPage implements OnInit, OnDestroy {
         return;
       }
       this.isLoading = true;
-      this.placeSub = this.placesService.getPlace(paramMap.get('placeId')).subscribe(place => {
-        this.place = place;
-        this.isBookable = place.userId !== this.authService.user_id;
-        this.isLoading = false;
-      }, error => {
-        this.alertCtrl.create({
-          header: 'An error occurred.',
-          message: 'Could not load place.',
-          buttons: [{
-            text: 'Okay',
-            handler: () => {
-              this.router.navigate(['/places/tabs/discover']);
+      let fetchedId: string;
+      this.authService.user_id
+        .pipe(
+          take(1),
+          switchMap(userId => {
+            if (!userId) {
+              throw new Error('Found no user id!');
             }
-          }]
-        })
-          .then(alertEl => {
-            alertEl.present();
-          });
-      });
+            fetchedId = userId;
+            return this.placesService.getPlace(paramMap.get('placeId'));
+          }))
+        .subscribe(place => {
+          this.place = place;
+          this.isBookable = place.userId !== fetchedId;
+          this.isLoading = false;
+        }, error => {
+          this.alertCtrl.create({
+            header: 'An error occurred.',
+            message: 'Could not load place.',
+            buttons: [{
+              text: 'Okay',
+              handler: () => {
+                this.router.navigate(['/places/tabs/discover']);
+              }
+            }]
+          })
+            .then(alertEl => {
+              alertEl.present();
+            });
+        });
     });
   }
 
@@ -132,6 +145,23 @@ export class PlaceDetailPage implements OnInit, OnDestroy {
             });
 
         }
+      });
+  }
+
+  onShowFullMap() {
+    this.modalCtrl.create({
+      component: MapModalComponent, componentProps: {
+        center: {
+          lat: this.place.location.lat,
+          lng: this.place.location.lng
+        },
+        selectable: false,
+        closeButtonText: 'Close',
+        title: this.place.location.address
+      }
+    })
+      .then(modalEl => {
+        modalEl.present();
       });
   }
 
