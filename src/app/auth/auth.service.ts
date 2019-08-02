@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, OnDestroy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 
 import { Plugins } from "@capacitor/core";
@@ -24,9 +24,11 @@ export interface AuthResponseData {
 @Injectable({
   providedIn: 'root'
 })
-export class AuthService {
+export class AuthService implements OnDestroy {
 
   private user = new BehaviorSubject<User>(null);
+
+  private activeLogoutTimer: any;
 
   constructor(private http: HttpClient) { }
 
@@ -54,6 +56,7 @@ export class AuthService {
         tap(user => {
           if (user) {
             this.user.next(user);
+            this.autoLogout(user.tokenDuration);
           }
         }),
         map(user => {
@@ -84,6 +87,17 @@ export class AuthService {
       }));
   }
 
+  get token() {
+    return this.user.asObservable()
+      .pipe(map(user => {
+        if (user) {
+          return user.token;
+        } else {
+          return null;
+        }
+      }));
+  }
+
   signUp(userEmail: string, userPassword: string) {
     return this.http.post<AuthResponseData>(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${environment.firebaseAPIKey}
     `, {
@@ -106,10 +120,16 @@ export class AuthService {
   }
 
   private setUserData(userData: AuthResponseData) {
-    const expirationTime = new Date(new Date().getTime() + (+userData.expiresIn * 1000));
-    this.user.next(
-      new User(
-        userData.localId, userData.email, userData.idToken, expirationTime));
+    const expirationTime = new Date(
+      new Date().getTime() + (+userData.expiresIn * 1000));
+    const user = new User(
+      userData.localId,
+      userData.email,
+      userData.idToken,
+      expirationTime);
+
+    this.user.next(user);
+    this.autoLogout(user.tokenDuration);
     this.storeAuthData(
       userData.localId,
       userData.idToken, expirationTime.toISOString(),
@@ -129,8 +149,26 @@ export class AuthService {
     });
   }
 
+  private autoLogout(duration: number) {
+    if (this.activeLogoutTimer) {
+      clearTimeout(this.activeLogoutTimer);
+    }
+    this.activeLogoutTimer = setTimeout(() => {
+      this.logout();
+    }, duration);
+  }
+
   logout() {
+    if (this.activeLogoutTimer) {
+      clearTimeout(this.activeLogoutTimer);
+    }
     this.user.next(null);
     Plugins.Storage.remove({ key: 'authData' });
+  }
+
+  ngOnDestroy() {
+    if (this.activeLogoutTimer) {
+      clearTimeout(this.activeLogoutTimer);
+    }
   }
 }

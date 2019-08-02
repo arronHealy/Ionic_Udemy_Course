@@ -53,8 +53,12 @@ export class PlacesService {
   }
 
   getPlace(id: string) {
-    return this.http.get<PlaceData>(`https://ionic-angular-project-80500.firebaseio.com/offered-places/${id}.json`)
-      .pipe(map(placeData => {
+    return this.authService.token.pipe(
+      take(1),
+      switchMap(token => {
+        return this.http.get<PlaceData>(`https://ionic-angular-project-80500.firebaseio.com/offered-places/${id}.json?auth=${token}`);
+      }),
+      map(placeData => {
         return new Place(
           id,
           placeData.title, placeData.description, placeData.imageUrl, placeData.price,
@@ -65,8 +69,13 @@ export class PlacesService {
   }
 
   fetchPlaces() {
-    return this.http.get<{ [key: string]: PlaceData }>('https://ionic-angular-project-80500.firebaseio.com/offered-places.json')
-      .pipe(map(resData => {
+    return this.authService.token.pipe(
+      take(1),
+      switchMap(token => {
+        return this.http
+          .get<{ [key: string]: PlaceData }>(`https://ionic-angular-project-80500.firebaseio.com/offered-places.json?auth=${token}`);
+      }),
+      map(resData => {
         // console.log(resData);
         const places = [];
         for (const key in resData) {
@@ -84,18 +93,27 @@ export class PlacesService {
         return places;
 
       }),
-        tap(places => {
-          this._places.next(places);
-        })
-      );
+      tap(places => {
+        this._places.next(places);
+      })
+    );
   }
 
   uploadImage(image: File) {
     const uploadData = new FormData();
     uploadData.append('image', image);
 
-    return this.http.post<{ imageUrl: string, imagePath: string }>(
-      'https://us-central1-ionic-angular-project-80500.cloudfunctions.net/storeImage', uploadData);
+    return this.authService.token.pipe(
+      take(1),
+      switchMap(token => {
+        return this.http.post<{ imageUrl: string, imagePath: string }>(
+          'https://us-central1-ionic-angular-project-80500.cloudfunctions.net/storeImage', uploadData, {
+            headers: {
+              Authorization: 'Bearer ' + token
+            }
+          });
+      })
+    );
   }
 
   addPlace(
@@ -106,11 +124,17 @@ export class PlacesService {
     location: PlaceLocation,
     imageUrl: string) {
     let generatedId: string;
+    let fetchedUserId: string;
     let newPlace: Place;
     return this.authService.user_id.pipe(
       take(1),
       switchMap(userId => {
-        if (!userId) {
+        fetchedUserId = userId;
+        return this.authService.token;
+      }),
+      take(1),
+      switchMap(token => {
+        if (!fetchedUserId) {
           throw new Error('No user id found...');
         }
 
@@ -122,11 +146,11 @@ export class PlacesService {
           price,
           dateFrom,
           dateTo,
-          userId,
+          fetchedUserId,
           location);
 
         return this.http
-          .post<{ name: string }>('https://ionic-angular-project-80500.firebaseio.com/offered-places.json', {
+          .post<{ name: string }>(`https://ionic-angular-project-80500.firebaseio.com/offered-places.json?auth=${token}`, {
             ...newPlace, id: null
           });
       }),
@@ -144,7 +168,13 @@ export class PlacesService {
 
   onEditOffer(placeId: string, title: string, description: string) {
     let updatedPlaces: Place[];
-    return this.places.pipe(
+    let fetchedToken: string;
+    return this.authService.token.pipe(
+      take(1),
+      switchMap(token => {
+        fetchedToken = token;
+        return this.places;
+      }),
       take(1),
       switchMap(places => {
         if (!places || places.length <= 0) {
@@ -166,7 +196,7 @@ export class PlacesService {
           oldPlace.location);
 
         return this.http
-          .put(`https://ionic-angular-project-80500.firebaseio.com/offered-places/${placeId}.json`,
+          .put(`https://ionic-angular-project-80500.firebaseio.com/offered-places/${placeId}.json?auth=${fetchedToken}`,
             {
               ...updatedPlaces[updatedPlaceIndex],
               id: null

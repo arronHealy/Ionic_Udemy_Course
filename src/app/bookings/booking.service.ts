@@ -38,7 +38,8 @@ export class BookingService {
         guestNumber: number,
         dateFrom: Date,
         dateTo: Date) {
-        let generatedId;
+        let generatedId: string;
+        let fetchedUserId: string;
         let newBooking: Booking;
         return this.authService.user_id
             .pipe(take(1),
@@ -46,10 +47,14 @@ export class BookingService {
                     if (!userId) {
                         throw new Error('No user id found');
                     }
-
+                    fetchedUserId = userId;
+                    return this.authService.token
+                }),
+                take(1),
+                switchMap(token => {
                     newBooking = new Booking(
                         Math.random().toString(), placeId,
-                        userId,
+                        fetchedUserId,
                         placeTitle,
                         placeImage,
                         firstName,
@@ -58,29 +63,33 @@ export class BookingService {
                         dateFrom,
                         dateTo);
                     return this.http
-                        .post<{ name: string }>('https://ionic-angular-project-80500.firebaseio.com/bookings.json', {
+                        .post<{ name: string }>(`https://ionic-angular-project-80500.firebaseio.com/bookings.json?auth=${token}`, {
                             ...newBooking,
                             id: null
                         });
-                }))
-            .pipe(switchMap(resData => {
-                generatedId = resData.name;
-                return this.bookings;
-            }),
+                }),
+                switchMap(resData => {
+                    generatedId = resData.name;
+                    return this.bookings;
+                }),
                 take(1),
                 tap(bookings => {
                     newBooking.id = generatedId;
                     this.bookings.next(bookings.concat(newBooking));
                 }));
 
-
     }
 
     cancelBooking(bookingId: string) {
-        return this.http.delete(`https://ionic-angular-project-80500.firebaseio.com/bookings/${bookingId}.json`)
-            .pipe(switchMap(() => {
-                return this.bookings;
-            }),
+        return this.authService.token
+            .pipe(
+                take(1),
+                switchMap(token => {
+                    return this.http.delete(`https://ionic-angular-project-80500.firebaseio.com/bookings/${bookingId}.json?auth=${token}`);
+                }),
+                switchMap(() => {
+                    return this.bookings;
+                }),
                 take(1),
                 tap(bookings => {
                     this.bookings.next(bookings.filter(b => b.id !== bookingId));
@@ -88,16 +97,22 @@ export class BookingService {
     }
 
     fetchBookings() {
+        let fetchedUserId: string;
+
         return this.authService.user_id.pipe(
             take(1),
             switchMap(userId => {
                 if (!userId) {
                     throw new Error('Could not find user id!');
                 }
+                fetchedUserId = userId;
+                return this.authService.token;
+            }),
+            switchMap(token => {
                 return this
                     .http
                     .get<{ [key: string]: BookingData }>(
-                        `https://ionic-angular-project-80500.firebaseio.com/bookings.json?orderBy="userId"&equalTo="${userId}"`);
+                        `https://ionic-angular-project-80500.firebaseio.com/bookings.json?orderBy="userId"&equalTo="${fetchedUserId}"&auth=${token}`);
             }),
             map(bookingData => {
                 const bookings = [];
